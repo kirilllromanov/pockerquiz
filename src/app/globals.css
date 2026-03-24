@@ -306,6 +306,116 @@ strong {
   margin: 10vh auto 0;
 }
 
+.helperCard {
+  padding: 1rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(87, 58, 32, 0.1);
+}
+
+.mediaCard {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(87, 58, 32, 0.1);
+}
+
+.mediaCardHidden {
+  opacity: 0.7;
+}
+
+.stageImage,
+.heroImage {
+  width: 100%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.heroImage {
+  max-height: 46vh;
+}
+
+.imageFrame {
+  position: relative;
+  min-height: 14rem;
+  overflow: hidden;
+  border-radius: 20px;
+}
+
+.heroImageFrame {
+  min-height: 18rem;
+}
+
+.playerShell {
+  width: min(720px, calc(100% - 1rem));
+  margin: 0 auto;
+  padding: 1rem 0 2rem;
+}
+
+.compactTopbar {
+  margin-bottom: 0.75rem;
+}
+
+.mainActionCard {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 28px;
+  backdrop-filter: blur(18px);
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: var(--shadow);
+}
+
+.playerMetaBar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.actionStage {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.leadText {
+  color: var(--text);
+  font-size: 1.15rem;
+  line-height: 1.6;
+}
+
+.wideButton {
+  width: 100%;
+}
+
+.mobileActions {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.compactPanel {
+  margin-top: 0.75rem;
+}
+
+.scoreStrip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.scorePill {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(87, 58, 32, 0.1);
+}
+
 @media (max-width: 900px) {
   .featureGrid,
   .twoColumns,
@@ -321,5 +431,26 @@ strong {
 
   .alignRight {
     text-align: left;
+  }
+
+  .landing,
+  .shell {
+    width: min(100%, calc(100% - 1rem));
+  }
+
+  .heroCard,
+  .panel,
+  .featureCard,
+  .mainActionCard {
+    border-radius: 24px;
+    padding: 1rem;
+  }
+
+  .playerMetaBar {
+    flex-direction: column;
+  }
+
+  .scoreStrip {
+    grid-template-columns: 1fr;
   }
 }

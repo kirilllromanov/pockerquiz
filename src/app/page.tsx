@@ -4,18 +4,19 @@ export default function Home() {
   return (
     <main className="landing">
       <section className="heroCard">
-        <p className="eyebrow">Realtime Quiz Table</p>
-        <h1>Poker Quiz</h1>
+        <p className="eyebrow">Mobile Quiz Table</p>
+        <h1>Closer Wins</h1>
         <p className="lead">
-          Один ведущий управляет вопросами, подсказками и ставками. Игроки отвечают
-          числом, торгуются за банк и вскрываются только после правильного ответа.
+          A host runs the round. Players enter one numeric answer, then decide
+          whether to continue or fold after the question and each hint. The
+          closest surviving answer takes the whole pot.
         </p>
         <div className="heroActions">
           <Link className="primaryButton" href="/host">
-            Открыть админку ведущего
+            Open host console
           </Link>
           <Link className="secondaryButton" href="/play">
-            Перейти в режим игрока
+            Open player screen
           </Link>
         </div>
       </section>
@@ -23,26 +24,26 @@ export default function Home() {
       <section className="featureGrid">
         <article className="featureCard">
           <p className="eyebrow">Flow</p>
-          <h2>Как идёт раунд</h2>
+          <h2>Round flow</h2>
           <p>
-            Вопрос, ответы игроков, круг ставок, первая подсказка, ещё круг,
-            вторая подсказка, последний круг, вскрытие и делёж банка.
+            Question, numeric answers, continue-or-fold choice, hint one, choice,
+            hint two, choice, then the correct answer and winner reveal.
           </p>
         </article>
         <article className="featureCard">
           <p className="eyebrow">Host</p>
-          <h2>Что видит ведущий</h2>
+          <h2>Host controls</h2>
           <p>
-            Полный стол: банк вопросов, текущий раунд, ставки, балансы, ответы
-            после вскрытия и кнопки перехода между этапами.
+            Add questions, attach images for each stage, reveal hints, move to the
+            next round, and monitor every player score in one place.
           </p>
         </article>
         <article className="featureCard">
           <p className="eyebrow">Players</p>
-          <h2>Что видят игроки</h2>
+          <h2>Player focus</h2>
           <p>
-            Текущий вопрос, открытые подсказки, свой стек, действия ставок и общий
-            баланс всех участников.
+            One clean mobile-first card with the current prompt, answer field,
+            continue or fold action, and the final round result.
           </p>
         </article>
       </section>

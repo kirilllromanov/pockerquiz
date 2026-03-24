@@ -3,8 +3,8 @@ import { GameState, HandState, Player, Question, ShowdownResult } from "@/lib/ga
 export class GameError extends Error {}
 
 const DEFAULT_JOIN_CODE = "QUIZ";
-const DEFAULT_STACK = 1000;
-const DEFAULT_MIN_RAISE = 50;
+const DEFAULT_STACK = 10;
+const CONTINUE_COST = 1;
 
 export function createInitialState(): GameState {
   return {
@@ -12,12 +12,12 @@ export function createInitialState(): GameState {
     phase: "lobby",
     joinCode: DEFAULT_JOIN_CODE,
     startingStack: DEFAULT_STACK,
-    minRaise: DEFAULT_MIN_RAISE,
+    continueCost: CONTINUE_COST,
     questions: [],
     players: [],
     currentQuestionIndex: -1,
     currentHand: null,
-    message: "Добавьте вопросы, затем подключите игроков и запускайте игру.",
+    message: "Add questions, let players join, then start the game.",
     updatedAt: new Date().toISOString(),
   };
 }
@@ -29,15 +29,13 @@ export function sanitizeState(state: GameState, role: "host" | "player"): GameSt
 
   return {
     ...state,
-    questions: state.questions.map((question, index) => {
-      const shouldRevealAnswer =
-        state.currentHand?.questionIndex === index && state.currentHand.result !== null;
-
-      return {
-        ...question,
-        answer: shouldRevealAnswer ? question.answer : NaN,
-      };
-    }),
+    questions: state.questions.map((question, index) => ({
+      ...question,
+      answer:
+        state.currentHand?.questionIndex === index && state.currentHand.result
+          ? question.answer
+          : NaN,
+    })),
   };
 }
 
@@ -51,30 +49,48 @@ export function getCurrentQuestion(state: GameState): Question | null {
 
 export function addQuestion(
   state: GameState,
-  payload: { text: string; answer: number; hint1: string; hint2: string },
+  payload: {
+    text: string;
+    answer: number;
+    imageUrl?: string | null;
+    hint1: string;
+    hint1ImageUrl?: string | null;
+    hint2: string;
+    hint2ImageUrl?: string | null;
+  },
 ) {
   const text = payload.text.trim();
   const hint1 = payload.hint1.trim();
   const hint2 = payload.hint2.trim();
 
   if (!text || !hint1 || !hint2 || !Number.isFinite(payload.answer)) {
-    throw new GameError("Нужны текст вопроса, две подсказки и числовой правильный ответ.");
+    throw new GameError("Question text, both hints, and a numeric answer are required.");
   }
 
   state.questions.push({
     id: crypto.randomUUID(),
     text,
     answer: payload.answer,
-    hints: [hint1, hint2],
+    imageUrl: payload.imageUrl ?? null,
+    hints: [
+      {
+        text: hint1,
+        imageUrl: payload.hint1ImageUrl ?? null,
+      },
+      {
+        text: hint2,
+        imageUrl: payload.hint2ImageUrl ?? null,
+      },
+    ],
   });
-  touch(state, `Вопросов в банке: ${state.questions.length}.`);
+  touch(state, `${state.questions.length} questions ready.`);
 }
 
 export function joinPlayer(state: GameState, payload: { name: string }) {
   const name = payload.name.trim();
 
   if (!name) {
-    throw new GameError("У игрока должно быть имя.");
+    throw new GameError("Player name is required.");
   }
 
   const existing = state.players.find(
@@ -83,7 +99,7 @@ export function joinPlayer(state: GameState, payload: { name: string }) {
 
   if (existing) {
     if (existing.isEliminated) {
-      throw new GameError("Игрок с таким именем уже выбыл из текущей игры.");
+      throw new GameError("That player has already been eliminated in this game.");
     }
 
     return existing;
@@ -98,17 +114,17 @@ export function joinPlayer(state: GameState, payload: { name: string }) {
   };
 
   state.players.push(player);
-  touch(state, `${player.name} подключился к столу.`);
+  touch(state, `${player.name} joined the table.`);
   return player;
 }
 
 export function startGame(state: GameState) {
   if (state.questions.length === 0) {
-    throw new GameError("Сначала добавьте хотя бы один вопрос.");
+    throw new GameError("Add at least one question first.");
   }
 
   if (state.players.length < 2) {
-    throw new GameError("Для старта игры нужно минимум два игрока.");
+    throw new GameError("At least two players are required to start.");
   }
 
   for (const player of state.players) {
@@ -129,9 +145,7 @@ export function startNextQuestion(state: GameState, isGameStart = false) {
     state.currentHand = null;
     touch(
       state,
-      alivePlayers[0]
-        ? `${alivePlayers[0].name} победил в игре.`
-        : "Игра завершена без победителя.",
+      alivePlayers[0] ? `${alivePlayers[0].name} wins the game.` : "The game ended.",
     );
     return;
   }
@@ -142,7 +156,7 @@ export function startNextQuestion(state: GameState, isGameStart = false) {
     state.phase = "finished";
     state.currentHand = null;
     const leader = [...alivePlayers].sort((a, b) => b.stack - a.stack)[0];
-    touch(state, `Вопросы закончились. Лидер по фишкам: ${leader.name}.`);
+    touch(state, `No questions left. Chip leader: ${leader.name}.`);
     return;
   }
 
@@ -154,19 +168,15 @@ export function startNextQuestion(state: GameState, isGameStart = false) {
     submittedAnswers: {},
     foldedPlayerIds: [],
     pot: 0,
-    currentBet: 0,
-    roundContributions: {},
-    totalContributions: {},
-    actedPlayerIds: [],
-    bettingRound: 0,
+    contributions: {},
+    currentDecisionStage: null,
+    decisionResponses: {},
     result: null,
   };
   state.phase = "question";
   touch(
     state,
-    isGameStart
-      ? "Игра запущена. Игроки отвечают на первый вопрос."
-      : "Следующий вопрос открыт.",
+    isGameStart ? "Game started. Players can submit answers." : "Next question is live.",
   );
 }
 
@@ -174,80 +184,53 @@ export function submitAnswer(state: GameState, payload: { playerId: string; answ
   const hand = requireCurrentHand(state);
   const player = requirePlayer(state, payload.playerId);
 
-  if (state.phase !== "question" && state.phase !== "hint") {
-    throw new GameError("Сейчас нельзя отправлять ответы.");
+  if (state.phase !== "question") {
+    throw new GameError("Answers are closed right now.");
   }
 
   if (player.isEliminated) {
-    throw new GameError("Игрок уже выбыл.");
+    throw new GameError("This player has already been eliminated.");
   }
 
   if (!Number.isFinite(payload.answer)) {
-    throw new GameError("Ответ должен быть числом.");
+    throw new GameError("Answer must be a number.");
   }
 
   if (hand.submittedAnswers[player.id] !== undefined) {
-    throw new GameError("Ответ уже отправлен и больше не меняется.");
+    throw new GameError("Answer already submitted.");
   }
 
   hand.submittedAnswers[player.id] = payload.answer;
 
   if (allAlivePlayersAnswered(state)) {
-    touch(state, "Все ответы получены. Ведущий может запускать круг ставок.");
+    openDecisionStage(state, 0);
     return;
   }
 
-  touch(state, `${player.name} отправил ответ.`);
-}
-
-export function startBettingRound(state: GameState) {
-  const hand = requireCurrentHand(state);
-
-  if (state.phase === "betting") {
-    throw new GameError("Круг ставок уже идёт.");
-  }
-
-  if (hand.result) {
-    throw new GameError("Этот вопрос уже завершён.");
-  }
-
-  if (!allAlivePlayersAnswered(state)) {
-    throw new GameError("Сначала дождитесь ответов от всех активных игроков.");
-  }
-
-  const activePlayers = getBettingPlayers(state);
-
-  if (activePlayers.length <= 1) {
-    awardLastStanding(state);
-    return;
-  }
-
-  hand.currentBet = 0;
-  hand.roundContributions = {};
-  hand.actedPlayerIds = [];
-  hand.bettingRound += 1;
-  state.phase = "betting";
-  touch(state, `Запущен круг ставок №${hand.bettingRound}.`);
+  touch(state, `${player.name} submitted an answer.`);
 }
 
 export function revealHint(state: GameState) {
   const hand = requireCurrentHand(state);
 
-  if (state.phase === "betting") {
-    throw new GameError("Сначала завершите текущий круг ставок.");
-  }
-
-  if (hand.revealedHints >= 2) {
-    throw new GameError("Обе подсказки уже открыты.");
+  if (state.phase === "decision") {
+    throw new GameError("Wait until players finish the current continue-or-fold choice.");
   }
 
   if (!allAlivePlayersAnswered(state)) {
-    throw new GameError("Сначала дождитесь ответов от всех игроков.");
+    throw new GameError("Wait until every active player submits an answer.");
+  }
+
+  if (hand.result) {
+    throw new GameError("This round is already complete.");
+  }
+
+  if (hand.revealedHints >= 2) {
+    throw new GameError("Both hints are already revealed.");
   }
 
   hand.revealedHints += 1;
-  state.phase = "hint";
-  touch(state, `Подсказка ${hand.revealedHints} открыта. Можно запускать следующий круг ставок.`);
+  openDecisionStage(state, hand.revealedHints);
 }
 
 export function revealShowdown(state: GameState) {
@@ -255,21 +238,25 @@ export function revealShowdown(state: GameState) {
   const question = getCurrentQuestion(state);
 
   if (!question) {
-    throw new GameError("Нет активного вопроса.");
+    throw new GameError("No active question.");
   }
 
-  if (state.phase === "betting") {
-    throw new GameError("Сначала завершите круг ставок.");
+  if (state.phase === "decision") {
+    throw new GameError("Wait until players finish the current continue-or-fold choice.");
+  }
+
+  if (hand.revealedHints < 2) {
+    throw new GameError("Reveal both hints before opening the answer.");
   }
 
   if (hand.result) {
-    throw new GameError("Вскрытие уже выполнено.");
+    throw new GameError("Showdown already happened.");
   }
 
-  const contenders = getBettingPlayers(state);
+  const contenders = getContenders(state);
 
   if (contenders.length === 0) {
-    throw new GameError("Нет игроков для вскрытия.");
+    throw new GameError("No players left in the round.");
   }
 
   const distances = contenders.map((player) => ({
@@ -287,8 +274,8 @@ export function revealShowdown(state: GameState) {
   touch(
     state,
     winners.length === 1
-      ? `${winners[0].name} забирает банк.`
-      : `${winners.map((winner) => winner.name).join(", ")} делят банк.`,
+      ? `${winners[0].name} wins the round.`
+      : `${winners.map((winner) => winner.name).join(", ")} split the round.`,
   );
 }
 
@@ -298,7 +285,7 @@ export function resetGame(state: GameState) {
   state.phase = fresh.phase;
   state.joinCode = fresh.joinCode;
   state.startingStack = fresh.startingStack;
-  state.minRaise = fresh.minRaise;
+  state.continueCost = fresh.continueCost;
   state.questions = [];
   state.players = [];
   state.currentQuestionIndex = fresh.currentQuestionIndex;
@@ -307,99 +294,112 @@ export function resetGame(state: GameState) {
   state.updatedAt = fresh.updatedAt;
 }
 
-export function applyPlayerBetAction(
+export function applyPlayerDecision(
   state: GameState,
-  payload: { playerId: string; action: "check" | "call" | "raise" | "fold"; amount?: number },
+  payload: { playerId: string; choice: "continue" | "fold" },
 ) {
   const hand = requireCurrentHand(state);
   const player = requirePlayer(state, payload.playerId);
 
-  if (state.phase !== "betting") {
-    throw new GameError("Ставки сейчас закрыты.");
+  if (state.phase !== "decision" || hand.currentDecisionStage === null) {
+    throw new GameError("There is no active continue-or-fold decision right now.");
   }
 
   if (player.isEliminated) {
-    throw new GameError("Игрок уже выбыл.");
-  }
-
-  if (hand.foldedPlayerIds.includes(player.id)) {
-    throw new GameError("Игрок уже спасовал.");
+    throw new GameError("This player has already been eliminated.");
   }
 
   if (hand.submittedAnswers[player.id] === undefined) {
-    throw new GameError("Сначала нужно отправить ответ.");
+    throw new GameError("Submit an answer first.");
   }
 
-  const currentContribution = hand.roundContributions[player.id] ?? 0;
-  const toCall = hand.currentBet - currentContribution;
-
-  switch (payload.action) {
-    case "check": {
-      if (toCall !== 0) {
-        throw new GameError("Нельзя чекать, пока ставка не уравнена.");
-      }
-      markActed(hand, player.id);
-      touch(state, `${player.name} сказал чек.`);
-      break;
-    }
-    case "call": {
-      if (toCall < 0) {
-        throw new GameError("Состояние ставок повреждено.");
-      }
-      moveChips(state, player, hand, toCall);
-      markActed(hand, player.id);
-      touch(state, `${player.name} уравнял ставку.`);
-      break;
-    }
-    case "raise": {
-      const targetBet = payload.amount ?? 0;
-
-      if (!Number.isInteger(targetBet) || targetBet < hand.currentBet + state.minRaise) {
-        throw new GameError(
-          `Рейз должен поднимать ставку минимум до ${hand.currentBet + state.minRaise}.`,
-        );
-      }
-
-      const raiseBy = targetBet - currentContribution;
-      moveChips(state, player, hand, raiseBy);
-      hand.currentBet = targetBet;
-      hand.actedPlayerIds = [player.id];
-      touch(state, `${player.name} поднял ставку до ${targetBet}.`);
-      break;
-    }
-    case "fold": {
-      hand.foldedPlayerIds.push(player.id);
-      markActed(hand, player.id);
-      touch(state, `${player.name} спасовал.`);
-      break;
-    }
-    default:
-      throw new GameError("Неизвестное действие игрока.");
+  if (hand.foldedPlayerIds.includes(player.id)) {
+    throw new GameError("This player already folded.");
   }
 
-  if (getBettingPlayers(state).length <= 1) {
+  if (hand.decisionResponses[player.id]) {
+    throw new GameError("Decision already submitted for this stage.");
+  }
+
+  if (payload.choice === "continue") {
+    if (player.stack < state.continueCost) {
+      throw new GameError("Not enough points to continue.");
+    }
+    player.stack -= state.continueCost;
+    hand.pot += state.continueCost;
+    hand.contributions[player.id] = (hand.contributions[player.id] ?? 0) + state.continueCost;
+    hand.decisionResponses[player.id] = "continue";
+  } else {
+    hand.foldedPlayerIds.push(player.id);
+    hand.decisionResponses[player.id] = "fold";
+  }
+
+  if (getContenders(state).length <= 1) {
     awardLastStanding(state);
     return;
   }
 
-  if (state.phase === "betting" && isBettingRoundComplete(state)) {
-    state.phase = hand.revealedHints > 0 ? "hint" : "question";
-    touch(state, "Круг ставок завершён. Ведущий может открыть подсказку или перейти к вскрытию.");
+  if (allDecisionMakersActed(state)) {
+    closeDecisionStage(state);
+  } else {
+    touch(state, `${player.name} made a choice.`);
   }
+}
+
+function openDecisionStage(state: GameState, stageIndex: number) {
+  const hand = requireCurrentHand(state);
+
+  hand.currentDecisionStage = stageIndex;
+  hand.decisionResponses = {};
+  state.phase = "decision";
+
+  if (stageIndex === 0) {
+    touch(state, "Answers are locked. Players can now continue or fold.");
+    return;
+  }
+
+  touch(state, `Hint ${stageIndex} is live. Players can continue or fold.`);
+}
+
+function closeDecisionStage(state: GameState) {
+  const hand = requireCurrentHand(state);
+  hand.currentDecisionStage = null;
+  hand.decisionResponses = {};
+  state.phase = "question";
+
+  if (hand.revealedHints === 0) {
+    touch(state, "Question phase complete. Host can reveal hint 1.");
+    return;
+  }
+
+  if (hand.revealedHints === 1) {
+    touch(state, "Hint 1 phase complete. Host can reveal hint 2.");
+    return;
+  }
+
+  touch(state, "Hint 2 phase complete. Host can reveal the correct answer.");
 }
 
 function awardLastStanding(state: GameState) {
   const hand = requireCurrentHand(state);
-  const winners = getBettingPlayers(state);
+  const winners = getContenders(state);
 
   if (winners.length !== 1) {
-    throw new GameError("Нельзя завершить раздачу без единственного активного игрока.");
+    throw new GameError("Last-standing resolution requires exactly one contender.");
   }
 
-  hand.result = awardPot(state, winners, 0, getCurrentQuestion(state)?.answer ?? 0, "last-player-standing");
+  hand.result = awardPot(
+    state,
+    winners,
+    0,
+    getCurrentQuestion(state)?.answer ?? 0,
+    "last-player-standing",
+  );
+  hand.currentDecisionStage = null;
+  hand.decisionResponses = {};
   state.phase = "showdown";
   eliminateBrokePlayers(state);
-  touch(state, `${winners[0].name} забирает банк без вскрытия.`);
+  touch(state, `${winners[0].name} wins the round by staying in alone.`);
 }
 
 function awardPot(
@@ -411,16 +411,16 @@ function awardPot(
 ) {
   const hand = requireCurrentHand(state);
   const awarded: Record<string, number> = {};
-  const splitBase = winners.length === 0 ? 0 : Math.floor(hand.pot / winners.length);
-  let remainder = winners.length === 0 ? 0 : hand.pot % winners.length;
+  const splitBase = Math.floor(hand.pot / winners.length);
+  let remainder = hand.pot % winners.length;
 
   for (const winner of winners) {
-    const chips = splitBase + (remainder > 0 ? 1 : 0);
+    const payout = splitBase + (remainder > 0 ? 1 : 0);
     if (remainder > 0) {
       remainder -= 1;
     }
-    winner.stack += chips;
-    awarded[winner.id] = chips;
+    winner.stack += payout;
+    awarded[winner.id] = payout;
   }
 
   return {
@@ -432,64 +432,36 @@ function awardPot(
   };
 }
 
-function moveChips(state: GameState, player: Player, hand: HandState, amount: number) {
-  if (amount < 0) {
-    throw new GameError("Некорректный размер ставки.");
-  }
-
-  if (amount === 0) {
-    return;
-  }
-
-  if (player.stack < amount) {
-    throw new GameError("Недостаточно фишек. В этой версии all-in и side-pot не поддерживаются.");
-  }
-
-  player.stack -= amount;
-  hand.pot += amount;
-  hand.roundContributions[player.id] = (hand.roundContributions[player.id] ?? 0) + amount;
-  hand.totalContributions[player.id] = (hand.totalContributions[player.id] ?? 0) + amount;
-}
-
-function isBettingRoundComplete(state: GameState) {
-  const hand = requireCurrentHand(state);
-  const bettingPlayers = getBettingPlayers(state);
-
-  return bettingPlayers.every((player) => {
-    const contribution = hand.roundContributions[player.id] ?? 0;
-    return hand.actedPlayerIds.includes(player.id) && contribution === hand.currentBet;
-  });
-}
-
-function markActed(hand: HandState, playerId: string) {
-  if (!hand.actedPlayerIds.includes(playerId)) {
-    hand.actedPlayerIds.push(playerId);
-  }
-}
-
 function allAlivePlayersAnswered(state: GameState) {
   const hand = requireCurrentHand(state);
-  const alivePlayers = getAlivePlayers(state);
+  return getAlivePlayers(state).every((player) => hand.submittedAnswers[player.id] !== undefined);
+}
 
-  return alivePlayers.every((player) => hand.submittedAnswers[player.id] !== undefined);
+function allDecisionMakersActed(state: GameState) {
+  const hand = requireCurrentHand(state);
+  const decisionMakers = getDecisionMakers(state);
+  return decisionMakers.every((player) => hand.decisionResponses[player.id] !== undefined);
 }
 
 function getAlivePlayers(state: GameState) {
   return state.players.filter((player) => !player.isEliminated);
 }
 
-function getBettingPlayers(state: GameState) {
+function getContenders(state: GameState) {
   const hand = requireCurrentHand(state);
-
   return getAlivePlayers(state).filter(
     (player) =>
       hand.submittedAnswers[player.id] !== undefined && !hand.foldedPlayerIds.includes(player.id),
   );
 }
 
-function requireCurrentHand(state: GameState) {
+function getDecisionMakers(state: GameState) {
+  return getContenders(state);
+}
+
+function requireCurrentHand(state: GameState): HandState {
   if (!state.currentHand) {
-    throw new GameError("Сейчас нет активного вопроса.");
+    throw new GameError("There is no active hand.");
   }
 
   return state.currentHand;
@@ -499,7 +471,7 @@ function requirePlayer(state: GameState, playerId: string) {
   const player = state.players.find((item) => item.id === playerId);
 
   if (!player) {
-    throw new GameError("Игрок не найден.");
+    throw new GameError("Player not found.");
   }
 
   return player;

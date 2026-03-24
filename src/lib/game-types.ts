@@ -1,16 +1,16 @@
-export type GamePhase =
-  | "lobby"
-  | "question"
-  | "hint"
-  | "betting"
-  | "showdown"
-  | "finished";
+export type GamePhase = "lobby" | "question" | "decision" | "showdown" | "finished";
+
+export interface StageMedia {
+  text: string;
+  imageUrl: string | null;
+}
 
 export interface Question {
   id: string;
   text: string;
   answer: number;
-  hints: [string, string];
+  imageUrl: string | null;
+  hints: [StageMedia, StageMedia];
 }
 
 export interface Player {
@@ -36,11 +36,9 @@ export interface HandState {
   submittedAnswers: Record<string, number>;
   foldedPlayerIds: string[];
   pot: number;
-  currentBet: number;
-  roundContributions: Record<string, number>;
-  totalContributions: Record<string, number>;
-  actedPlayerIds: string[];
-  bettingRound: number;
+  contributions: Record<string, number>;
+  currentDecisionStage: number | null;
+  decisionResponses: Record<string, "continue" | "fold">;
   result: ShowdownResult | null;
 }
 
@@ -49,7 +47,7 @@ export interface GameState {
   phase: GamePhase;
   joinCode: string;
   startingStack: number;
-  minRaise: number;
+  continueCost: number;
   questions: Question[];
   players: Player[];
   currentQuestionIndex: number;

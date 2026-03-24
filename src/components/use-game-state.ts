@@ -36,7 +36,7 @@ export function useGameState(role: Role) {
       if ((caught as Error).name === "AbortError") {
         return;
       }
-      setError(caught instanceof Error ? caught.message : "Не удалось загрузить игру.");
+      setError(caught instanceof Error ? caught.message : "Could not load the game.");
     }
   }, [role]);
 

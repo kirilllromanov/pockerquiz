@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { ApiResponse, GameState } from "@/lib/game-types";
 import {
   GameError,
-  applyPlayerBetAction,
+  applyPlayerDecision,
   joinPlayer,
   sanitizeState,
   submitAnswer,
@@ -39,12 +39,10 @@ export async function POST(request: Request) {
           return {
             state: sanitizeState(draft, "player"),
           };
-        case "bet-action":
-          applyPlayerBetAction(draft, {
+        case "decision":
+          applyPlayerDecision(draft, {
             playerId: String(body.payload?.playerId ?? ""),
-            action: String(body.payload?.move ?? "") as "check" | "call" | "raise" | "fold",
-            amount:
-              body.payload?.amount === undefined ? undefined : Number(body.payload?.amount),
+            choice: String(body.payload?.choice ?? "") as "continue" | "fold",
           });
           return {
             state: sanitizeState(draft, "player"),
@@ -62,7 +60,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: error instanceof GameError ? error.message : "Не удалось выполнить действие игрока.",
+        error: error instanceof GameError ? error.message : "Player action failed.",
       } satisfies ApiResponse<never>,
       { status: 400 },
     );
