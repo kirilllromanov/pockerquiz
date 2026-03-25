@@ -98,10 +98,6 @@ export function joinPlayer(state: GameState, payload: { name: string }) {
   );
 
   if (existing) {
-    if (existing.isEliminated) {
-      throw new GameError("That player has already been eliminated in this game.");
-    }
-
     return existing;
   }
 
@@ -138,26 +134,10 @@ export function startGame(state: GameState) {
 }
 
 export function startNextQuestion(state: GameState, isGameStart = false) {
-  const alivePlayers = getAlivePlayers(state);
-
-  if (alivePlayers.length <= 1) {
-    state.phase = "finished";
-    state.currentHand = null;
-    touch(
-      state,
-      alivePlayers[0] ? `${alivePlayers[0].name} wins the game.` : "The game ended.",
-    );
-    return;
-  }
-
   const nextIndex = state.currentQuestionIndex + 1;
 
   if (!state.questions[nextIndex]) {
-    state.phase = "finished";
-    state.currentHand = null;
-    const leader = [...alivePlayers].sort((a, b) => b.stack - a.stack)[0];
-    touch(state, `No questions left. Chip leader: ${leader.name}.`);
-    return;
+    throw new GameError("No more questions in the bank. End the game or add more questions.");
   }
 
   state.currentQuestionIndex = nextIndex;
@@ -188,10 +168,6 @@ export function submitAnswer(state: GameState, payload: { playerId: string; answ
     throw new GameError("Answers are closed right now.");
   }
 
-  if (player.isEliminated) {
-    throw new GameError("This player has already been eliminated.");
-  }
-
   if (!Number.isFinite(payload.answer)) {
     throw new GameError("Answer must be a number.");
   }
@@ -202,7 +178,7 @@ export function submitAnswer(state: GameState, payload: { playerId: string; answ
 
   hand.submittedAnswers[player.id] = payload.answer;
 
-  if (allAlivePlayersAnswered(state)) {
+  if (allPlayersAnswered(state)) {
     openDecisionStage(state, 0);
     return;
   }
@@ -217,8 +193,8 @@ export function revealHint(state: GameState) {
     throw new GameError("Wait until players finish the current continue-or-fold choice.");
   }
 
-  if (!allAlivePlayersAnswered(state)) {
-    throw new GameError("Wait until every active player submits an answer.");
+  if (!allPlayersAnswered(state)) {
+    throw new GameError("Wait until every player submits an answer.");
   }
 
   if (hand.result) {
@@ -270,7 +246,6 @@ export function revealShowdown(state: GameState) {
 
   hand.result = awardPot(state, winners, closestDistance, question.answer, "closest-answer");
   state.phase = "showdown";
-  eliminateBrokePlayers(state);
   touch(
     state,
     winners.length === 1
@@ -294,6 +269,21 @@ export function resetGame(state: GameState) {
   state.updatedAt = fresh.updatedAt;
 }
 
+export function endGame(state: GameState) {
+  const topScore = Math.max(...state.players.map((player) => player.stack));
+  const winners = state.players.filter((player) => player.stack === topScore);
+
+  state.phase = "finished";
+  state.currentHand = null;
+  state.currentQuestionIndex = -1;
+  touch(
+    state,
+    winners.length === 1
+      ? `Game ended. ${winners[0].name} wins with ${topScore} points.`
+      : `Game ended. ${winners.map((player) => player.name).join(", ")} tie with ${topScore} points.`,
+  );
+}
+
 export function applyPlayerDecision(
   state: GameState,
   payload: { playerId: string; choice: "continue" | "fold" },
@@ -303,10 +293,6 @@ export function applyPlayerDecision(
 
   if (state.phase !== "decision" || hand.currentDecisionStage === null) {
     throw new GameError("There is no active continue-or-fold decision right now.");
-  }
-
-  if (player.isEliminated) {
-    throw new GameError("This player has already been eliminated.");
   }
 
   if (hand.submittedAnswers[player.id] === undefined) {
@@ -322,9 +308,6 @@ export function applyPlayerDecision(
   }
 
   if (payload.choice === "continue") {
-    if (player.stack < state.continueCost) {
-      throw new GameError("Not enough points to continue.");
-    }
     player.stack -= state.continueCost;
     hand.pot += state.continueCost;
     hand.contributions[player.id] = (hand.contributions[player.id] ?? 0) + state.continueCost;
@@ -334,7 +317,14 @@ export function applyPlayerDecision(
     hand.decisionResponses[player.id] = "fold";
   }
 
-  if (getContenders(state).length <= 1) {
+  const contenders = getContenders(state);
+
+  if (contenders.length === 0) {
+    resolveAllFolded(state);
+    return;
+  }
+
+  if (contenders.length === 1) {
     awardLastStanding(state);
     return;
   }
@@ -398,8 +388,32 @@ function awardLastStanding(state: GameState) {
   hand.currentDecisionStage = null;
   hand.decisionResponses = {};
   state.phase = "showdown";
-  eliminateBrokePlayers(state);
   touch(state, `${winners[0].name} wins the round by staying in alone.`);
+}
+
+function resolveAllFolded(state: GameState) {
+  const hand = requireCurrentHand(state);
+  const refunds: Record<string, number> = {};
+
+  for (const player of state.players) {
+    const committed = hand.contributions[player.id] ?? 0;
+    if (committed > 0) {
+      player.stack += committed;
+      refunds[player.id] = committed;
+    }
+  }
+
+  hand.result = {
+    winnerIds: [],
+    closestDistance: 0,
+    correctAnswer: getCurrentQuestion(state)?.answer ?? 0,
+    reason: "all-folded",
+    awarded: refunds,
+  };
+  hand.currentDecisionStage = null;
+  hand.decisionResponses = {};
+  state.phase = "showdown";
+  touch(state, "All players folded. The round has no winner and committed points were refunded.");
 }
 
 function awardPot(
@@ -432,31 +446,23 @@ function awardPot(
   };
 }
 
-function allAlivePlayersAnswered(state: GameState) {
+function allPlayersAnswered(state: GameState) {
   const hand = requireCurrentHand(state);
-  return getAlivePlayers(state).every((player) => hand.submittedAnswers[player.id] !== undefined);
-}
-
-function allDecisionMakersActed(state: GameState) {
-  const hand = requireCurrentHand(state);
-  const decisionMakers = getDecisionMakers(state);
-  return decisionMakers.every((player) => hand.decisionResponses[player.id] !== undefined);
-}
-
-function getAlivePlayers(state: GameState) {
-  return state.players.filter((player) => !player.isEliminated);
+  return state.players.every((player) => hand.submittedAnswers[player.id] !== undefined);
 }
 
 function getContenders(state: GameState) {
   const hand = requireCurrentHand(state);
-  return getAlivePlayers(state).filter(
+  return state.players.filter(
     (player) =>
       hand.submittedAnswers[player.id] !== undefined && !hand.foldedPlayerIds.includes(player.id),
   );
 }
 
-function getDecisionMakers(state: GameState) {
-  return getContenders(state);
+function allDecisionMakersActed(state: GameState) {
+  const hand = requireCurrentHand(state);
+  const decisionMakers = getContenders(state);
+  return decisionMakers.every((player) => hand.decisionResponses[player.id] !== undefined);
 }
 
 function requireCurrentHand(state: GameState): HandState {
@@ -475,14 +481,6 @@ function requirePlayer(state: GameState, playerId: string) {
   }
 
   return player;
-}
-
-function eliminateBrokePlayers(state: GameState) {
-  for (const player of state.players) {
-    if (player.stack <= 0) {
-      player.isEliminated = true;
-    }
-  }
 }
 
 function touch(state: GameState, message: string) {

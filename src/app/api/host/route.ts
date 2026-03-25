@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   GameError,
   addQuestion,
+  endGame,
   resetGame,
   revealHint,
   revealShowdown,
@@ -66,6 +67,9 @@ export async function POST(request: Request) {
           break;
         case "next-question":
           startNextQuestion(draft);
+          break;
+        case "end-game":
+          endGame(draft);
           break;
         case "reset-game":
           resetGame(draft);

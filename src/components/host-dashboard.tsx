@@ -77,8 +77,7 @@ export function HostDashboard() {
                 Phase: <strong>{renderPhase(state.phase, hand?.revealedHints ?? 0)}</strong>
               </p>
               <p className="statusLine">
-                Players alive:{" "}
-                <strong>{state.players.filter((player) => !player.isEliminated).length}</strong>
+                Players at table: <strong>{state.players.length}</strong>
               </p>
               <p className="statusLine">
                 Answers submitted: <strong>{answersCount}</strong>
@@ -116,6 +115,9 @@ export function HostDashboard() {
               onClick={() => void hostAction("next-question")}
             >
               Next question
+            </button>
+            <button className="secondaryButton" disabled={!state?.players.length} onClick={() => void hostAction("end-game")}>
+              End game
             </button>
             <button className="dangerButton" onClick={() => void hostAction("reset-game")}>
               Reset table
@@ -211,7 +213,6 @@ export function HostDashboard() {
                     <strong>{player.name}</strong>
                     <p>
                       Score: {player.stack}
-                      {player.isEliminated ? " • out" : ""}
                     </p>
                   </div>
                   <div className="alignRight">
@@ -254,10 +255,13 @@ export function HostDashboard() {
                 <div className="resultBox">
                   <p>Correct answer: {hand.result.correctAnswer}</p>
                   <p>
-                    Winner{hand.result.winnerIds.length > 1 ? "s" : ""}:{" "}
-                    {hand.result.winnerIds
-                      .map((winnerId) => state?.players.find((player) => player.id === winnerId)?.name ?? "—")
-                      .join(", ")}
+                    {hand.result.reason === "all-folded"
+                      ? "All players folded. No winner for this round."
+                      : `Winner${hand.result.winnerIds.length > 1 ? "s" : ""}: ${
+                          hand.result.winnerIds
+                            .map((winnerId) => state?.players.find((player) => player.id === winnerId)?.name ?? "—")
+                            .join(", ")
+                        }`}
                   </p>
                 </div>
               ) : null}

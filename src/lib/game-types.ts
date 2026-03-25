@@ -25,7 +25,7 @@ export interface ShowdownResult {
   winnerIds: string[];
   closestDistance: number;
   correctAnswer: number;
-  reason: "closest-answer" | "last-player-standing";
+  reason: "closest-answer" | "last-player-standing" | "all-folded";
   awarded: Record<string, number>;
 }
 

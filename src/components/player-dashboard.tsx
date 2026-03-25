@@ -128,7 +128,27 @@ export function PlayerDashboard() {
               ) : null}
             </div>
 
-            {question && hand && me && state?.phase !== "showdown" ? (
+            {state?.phase === "finished" ? (
+              <div className="stack">
+                <p className="statusMessage">{state.message}</p>
+                <div className="tableList">
+                  {state.players
+                    .slice()
+                    .sort((left, right) => right.stack - left.stack)
+                    .map((player) => (
+                      <article className="tableRow" key={player.id}>
+                        <div>
+                          <strong>{player.name}</strong>
+                          <p>Final score</p>
+                        </div>
+                        <div className="alignRight">
+                          <p>{player.stack}</p>
+                        </div>
+                      </article>
+                    ))}
+                </div>
+              </div>
+            ) : question && hand && me && state?.phase !== "showdown" ? (
               <>
                 {!hasSubmittedAnswer ? (
                   <form className="stack" onSubmit={handleSubmitAnswer}>
@@ -139,14 +159,13 @@ export function PlayerDashboard() {
                         value={answer}
                         onChange={(event) => setAnswer(event.target.value)}
                         placeholder="Type a number"
-                        disabled={me.isEliminated}
                       />
                     </label>
-                    <button className="primaryButton wideButton" disabled={me.isEliminated} type="submit">
+                    <button className="primaryButton wideButton" type="submit">
                       Submit answer
                     </button>
                   </form>
-                ) : state?.phase === "decision" && !me.isEliminated && !hasFolded ? (
+                ) : state?.phase === "decision" && !hasFolded ? (
                   <div className="stack">
                     <p className="subtleText">
                       Continue costs {state.continueCost} point and keeps you in the round.
@@ -179,10 +198,13 @@ export function PlayerDashboard() {
                 <div className="resultBox">
                   <p>Correct answer: {hand.result?.correctAnswer}</p>
                   <p>
-                    Winner{hand.result && hand.result.winnerIds.length > 1 ? "s" : ""}:{" "}
-                    {hand.result?.winnerIds
-                      .map((winnerId) => state.players.find((player) => player.id === winnerId)?.name ?? "—")
-                      .join(", ")}
+                    {hand.result?.reason === "all-folded"
+                      ? "All players folded. No winner this round."
+                      : `Winner${hand.result && hand.result.winnerIds.length > 1 ? "s" : ""}: ${
+                          hand.result?.winnerIds
+                            .map((winnerId) => state.players.find((player) => player.id === winnerId)?.name ?? "—")
+                            .join(", ")
+                        }`}
                   </p>
                 </div>
                 <div className="tableList">
@@ -190,7 +212,7 @@ export function PlayerDashboard() {
                     <article className="tableRow" key={player.id}>
                       <div>
                         <strong>{player.name}</strong>
-                        <p>{hand.foldedPlayerIds.includes(player.id) ? "Folded" : "Reached showdown"}</p>
+                        <p>{hand.foldedPlayerIds.includes(player.id) ? "Folded" : "Reached the end"}</p>
                       </div>
                       <div className="alignRight">
                         <p>Answer: {hand.submittedAnswers[player.id] ?? "—"}</p>
