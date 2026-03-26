@@ -124,6 +124,10 @@ export function HostDashboard() {
             </button>
           </div>
 
+          <p className="subtleText">
+            Reset table keeps the full question bank and images. It only resets scores and sends the game back to the start.
+          </p>
+
           {error ? <p className="errorText">{error}</p> : null}
         </div>
 
@@ -283,6 +287,15 @@ export function HostDashboard() {
               <p>
                 Answer: {item.answer} • Hints: {item.hints[0].text} / {item.hints[1].text}
               </p>
+              <div className="buttonRow">
+                <button
+                  className="dangerButton"
+                  disabled={state?.currentHand?.questionId === item.id}
+                  onClick={() => void hostAction("delete-question", { questionId: item.id })}
+                >
+                  Delete question
+                </button>
+              </div>
             </article>
           ))}
         </div>

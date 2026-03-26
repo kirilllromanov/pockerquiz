@@ -255,18 +255,37 @@ export function revealShowdown(state: GameState) {
 }
 
 export function resetGame(state: GameState) {
-  const fresh = createInitialState();
-  state.id = fresh.id;
-  state.phase = fresh.phase;
-  state.joinCode = fresh.joinCode;
-  state.startingStack = fresh.startingStack;
-  state.continueCost = fresh.continueCost;
-  state.questions = [];
-  state.players = [];
-  state.currentQuestionIndex = fresh.currentQuestionIndex;
-  state.currentHand = fresh.currentHand;
-  state.message = fresh.message;
-  state.updatedAt = fresh.updatedAt;
+  state.id = crypto.randomUUID();
+  state.phase = "lobby";
+  state.currentQuestionIndex = -1;
+  state.currentHand = null;
+
+  for (const player of state.players) {
+    player.stack = state.startingStack;
+    player.isEliminated = false;
+  }
+
+  touch(state, "Table reset. Scores are back to the starting value and the game is ready to restart from question 1.");
+}
+
+export function deleteQuestion(state: GameState, questionId: string) {
+  const index = state.questions.findIndex((question) => question.id === questionId);
+
+  if (index === -1) {
+    throw new GameError("Question not found.");
+  }
+
+  if (state.currentHand?.questionId === questionId) {
+    throw new GameError("You cannot delete the active question. Reset or finish the round first.");
+  }
+
+  state.questions.splice(index, 1);
+
+  if (state.currentQuestionIndex > index) {
+    state.currentQuestionIndex -= 1;
+  }
+
+  touch(state, `Question deleted. ${state.questions.length} questions remain in the bank.`);
 }
 
 export function endGame(state: GameState) {
