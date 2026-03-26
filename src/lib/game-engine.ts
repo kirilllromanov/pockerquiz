@@ -288,6 +288,14 @@ export function deleteQuestion(state: GameState, questionId: string) {
   touch(state, `Question deleted. ${state.questions.length} questions remain in the bank.`);
 }
 
+export function clearPlayers(state: GameState) {
+  state.phase = "lobby";
+  state.currentQuestionIndex = -1;
+  state.currentHand = null;
+  state.players = [];
+  touch(state, "All players were removed from the table. Question bank and images were kept.");
+}
+
 export function endGame(state: GameState) {
   const topScore = Math.max(...state.players.map((player) => player.stack));
   const winners = state.players.filter((player) => player.stack === topScore);

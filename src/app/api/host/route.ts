@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   GameError,
   addQuestion,
+  clearPlayers,
   deleteQuestion,
   endGame,
   resetGame,
@@ -74,6 +75,9 @@ export async function POST(request: Request) {
           break;
         case "delete-question":
           deleteQuestion(draft, String(body.payload?.questionId ?? ""));
+          break;
+        case "clear-players":
+          clearPlayers(draft);
           break;
         case "reset-game":
           resetGame(draft);

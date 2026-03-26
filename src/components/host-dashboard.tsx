@@ -119,6 +119,9 @@ export function HostDashboard() {
             <button className="secondaryButton" disabled={!state?.players.length} onClick={() => void hostAction("end-game")}>
               End game
             </button>
+            <button className="secondaryButton" disabled={!state?.players.length} onClick={() => void hostAction("clear-players")}>
+              Clear players
+            </button>
             <button className="dangerButton" onClick={() => void hostAction("reset-game")}>
               Reset table
             </button>
@@ -126,6 +129,9 @@ export function HostDashboard() {
 
           <p className="subtleText">
             Reset table keeps the full question bank and images. It only resets scores and sends the game back to the start.
+          </p>
+          <p className="subtleText">
+            Clear players removes the full roster but keeps the question bank and uploaded images.
           </p>
 
           {error ? <p className="errorText">{error}</p> : null}
