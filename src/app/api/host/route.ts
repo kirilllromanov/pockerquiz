@@ -42,7 +42,7 @@ export async function POST(request: Request) {
         });
 
         return sanitizeState(draft, "host");
-      });
+      }, { persistQuestions: true });
 
       return NextResponse.json({
         ok: true,
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
       }
 
       return sanitizeState(draft, "host");
-    });
+    }, { persistQuestions: body.action === "delete-question" });
 
     return NextResponse.json({
       ok: true,
